@@ -1,0 +1,16 @@
+{
+  "appId": "ir.tpmm286.amirreza.taninMaddahi",
+  "appName": "طنین مداحی",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}
