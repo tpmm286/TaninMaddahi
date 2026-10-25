@@ -1,3 +1,4 @@
+
 name: Web PWA
 
 on:
@@ -34,7 +35,7 @@ jobs:
       - name: Build web
         run: npm run build -- --base=/TaninMaddahi/
 
-      - name: Generate PWA files
+      - name: Generate PWA and favicon
         shell: bash
         run: |
           set -euo pipefail
@@ -47,9 +48,16 @@ jobs:
 
           mkdir -p dist/icons
 
+          # App icons
           convert assets/icon-only.png -resize 192x192 dist/icons/icon-192.png
           convert assets/icon-only.png -resize 512x512 dist/icons/icon-512.png
 
+          # Browser favicons
+          convert assets/icon-only.png -resize 32x32 dist/favicon-32.png
+          convert assets/icon-only.png -resize 16x16 dist/favicon-16.png
+          convert assets/icon-only.png -resize 48x48 dist/favicon.ico
+
+          # PWA manifest
           cat > dist/manifest.webmanifest <<'EOF'
           {
             "id": "/TaninMaddahi/",
@@ -78,8 +86,9 @@ jobs:
           }
           EOF
 
+          # Service Worker
           cat > dist/sw.js <<'EOF'
-          const CACHE_NAME = 'tanin-maddahi-v1';
+          const CACHE_NAME = 'tanin-maddahi-v2';
           const BASE = '/TaninMaddahi/';
 
           self.addEventListener('install', event => {
@@ -147,9 +156,7 @@ jobs:
                 const cache = await caches.open(CACHE_NAME);
                 const cached = await cache.match(request);
 
-                if (cached) {
-                  return cached;
-                }
+                if (cached) return cached;
 
                 const response = await fetch(request);
 
@@ -163,31 +170,45 @@ jobs:
           });
           EOF
 
+          # Add manifest, favicon and Service Worker registration
           node --input-type=module <<'EOF'
           import fs from 'node:fs';
 
           const file = 'dist/index.html';
           let html = fs.readFileSync(file, 'utf8');
 
+          const headTags = `
+          <link rel="manifest" href="/TaninMaddahi/manifest.webmanifest">
+          <link rel="icon" href="/TaninMaddahi/favicon.ico" sizes="48x48">
+          <link rel="icon" type="image/png" sizes="32x32" href="/TaninMaddahi/favicon-32.png">
+          <link rel="icon" type="image/png" sizes="16x16" href="/TaninMaddahi/favicon-16.png">
+          <meta name="theme-color" content="#090e0b">
+          `;
+
           if (!html.includes('manifest.webmanifest')) {
-            html = html.replace(
-              '</head>',
-              '  <link rel="manifest" href="/TaninMaddahi/manifest.webmanifest">\n</head>'
-            );
+            html = html.replace('</head>', `${headTags}\n</head>`);
+          } else {
+            if (!html.includes('favicon.ico')) {
+              html = html.replace('</head>', `${headTags}\n</head>`);
+            }
           }
 
-          if (!html.includes('name="theme-color"')) {
-            html = html.replace(
-              '</head>',
-              '  <meta name="theme-color" content="#090e0b">\n</head>'
-            );
+          const registration = `
+          <script>
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+              navigator.serviceWorker
+                .register('/TaninMaddahi/sw.js', {
+                  scope: '/TaninMaddahi/'
+                })
+                .catch(error => console.error('Service Worker:', error));
+            });
           }
+          </script>
+          `;
 
           if (!html.includes('/TaninMaddahi/sw.js')) {
-            html = html.replace(
-              '</body>',
-              '  <script>if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/TaninMaddahi/sw.js", { scope: "/TaninMaddahi/" }).catch(console.error));</script>\n</body>'
-            );
+            html = html.replace('</body>', `${registration}\n</body>`);
           }
 
           fs.writeFileSync(file, html);
