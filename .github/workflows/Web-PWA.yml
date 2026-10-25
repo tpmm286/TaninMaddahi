@@ -1,84 +1,74 @@
 
-name: Web PWA
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build web
-        run: npm run build -- --base=/TaninMaddahi/
-
-      - name: Create PWA manifest
+      - name: Create Service Worker
         run: |
-          mkdir -p dist/icons
-          cp assets/icon-only.png dist/icons/icon-512.png
-          cat > dist/manifest.webmanifest <<'EOF'
-          {
-            "name": "طنین مداحی",
-            "short_name": "طنین مداحی",
-            "start_url": "/TaninMaddahi/",
-            "scope": "/TaninMaddahi/",
-            "display": "standalone",
-            "background_color": "#090e0b",
-            "theme_color": "#090e0b",
-            "icons": [
-              {
-                "src": "/TaninMaddahi/icons/icon-512.png",
-                "sizes": "512x512",
-                "type": "image/png"
-              }
-            ]
-          }
+          cat > dist/sw.js <<'EOF'
+          const CACHE_NAME = 'tanin-maddahi-v1';
+          const BASE = '/TaninMaddahi/';
+
+          self.addEventListener('install', event => {
+            event.waitUntil(
+              caches.open(CACHE_NAME).then(cache => cache.add(BASE))
+            );
+            self.skipWaiting();
+          });
+
+          self.addEventListener('activate', event => {
+            event.waitUntil((async () => {
+              const keys = await caches.keys();
+              await Promise.all(
+                keys
+                  .filter(key =>
+                    key.startsWith('tanin-maddahi-') &&
+                    key !== CACHE_NAME
+                  )
+                  .map(key => caches.delete(key))
+              );
+              await self.clients.claim();
+            })());
+          });
+
+          self.addEventListener('fetch', event => {
+            const request = event.request;
+            const url = new URL(request.url);
+
+            if (
+              request.method !== 'GET' ||
+              url.origin !== self.location.origin
+            ) return;
+
+            if (request.mode === 'navigate') {
+              event.respondWith((async () => {
+                try {
+                  const response = await fetch(request);
+                  if (response.ok) {
+                    const cache = await caches.open(CACHE_NAME);
+                    await cache.put(request, response.clone());
+                  }
+                  return response;
+                } catch {
+                  return (await caches.match(request)) ||
+                         (await caches.match(BASE)) ||
+                         Response.error();
+                }
+              })());
+              return;
+            }
+
+            if (
+              url.pathname.startsWith(BASE) &&
+              /\.(js|css|png|jpe?g|svg|webp|woff2?)$/i.test(url.pathname)
+            ) {
+              event.respondWith((async () => {
+                const cached = await caches.match(request);
+                if (cached) return cached;
+
+                const response = await fetch(request);
+                if (response.ok) {
+                  const cache = await caches.open(CACHE_NAME);
+                  await cache.put(request, response.clone());
+                }
+                return response;
+              })());
+            }
+          });
           EOF
-
-          node --input-type=module <<'EOF'
-          import fs from 'node:fs';
-          const file = 'dist/index.html';
-          let html = fs.readFileSync(file, 'utf8');
-          html = html.replace('</head>', '  <link rel="manifest" href="/TaninMaddahi/manifest.webmanifest">\n</head>');
-          fs.writeFileSync(file, html);
-          EOF
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-    steps:
-      - name: Deploy
-        uses: actions/deploy-pages@v4
