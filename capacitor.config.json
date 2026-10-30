@@ -1,0 +1,11 @@
+{
+  "appId": "ir.tanin.maddahi",
+  "appName": "طنین مداحی",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
