@@ -6,6 +6,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -109,4 +113,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: out/*.apk
+          name: طنین مداحی ${{ github.ref_name }}
+          files: out/TaninMaddahi-release.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true
